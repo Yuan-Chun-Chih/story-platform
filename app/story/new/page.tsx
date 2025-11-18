@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState, useTransition } from "react";
+import { FormEvent, useState, useTransition } from "react";
 import { createStory } from "../../actions";
 import { auth } from "../../../lib/firebase";
 
@@ -10,32 +10,18 @@ export default function NewStoryPage() {
   const [content, setContent] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const [isSignedIn, setIsSignedIn] = useState(false);
   const router = useRouter();
-
-  useEffect(() => {
-    const unsub = auth.onAuthStateChanged((user) => {
-      setIsSignedIn(Boolean(user));
-    });
-    return () => unsub();
-  }, []);
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const user = auth.currentUser;
-
-    if (!user) {
-      setMessage("請先使用 Google 登入後再建立故事。");
-      return;
-    }
 
     startTransition(async () => {
       try {
-        const idToken = await user.getIdToken();
+        const idToken = await auth.currentUser?.getIdToken();
         const formData = new FormData();
         formData.append("title", title);
         formData.append("content", content);
-        formData.append("idToken", idToken);
+        if (idToken) formData.append("idToken", idToken);
 
         await createStory(formData);
         router.push("/");
@@ -56,11 +42,6 @@ export default function NewStoryPage() {
         <p className="text-sm text-slate-600">
           提供故事標題與開場段落，我們會用 Imagen 生成封面，並自動建立首筆貢獻。
         </p>
-        {!isSignedIn && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            請先登入 Google 帳號，提交表單時會使用目前登入的身分。
-          </div>
-        )}
       </div>
 
       <form

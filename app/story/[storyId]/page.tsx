@@ -14,7 +14,8 @@ import {
 } from "firebase/firestore";
 
 type Props = {
-  params: { storyId: string };
+  // [修復] params 現在是一個 Promise
+  params: Promise<{ storyId: string }>;
 };
 
 const toDateString = (value: unknown) => {
@@ -25,10 +26,12 @@ const toDateString = (value: unknown) => {
 };
 
 export default async function StoryDetailPage({ params }: Props) {
-  const { storyId } = params;
+  // [修復] 必須先 await params 才能取得 storyId
+  const { storyId } = await params;
 
   const storyRef = doc(db, "stories", storyId);
   const storySnap = await getDoc(storyRef);
+
   if (!storySnap.exists()) {
     notFound();
   }

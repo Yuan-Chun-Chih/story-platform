@@ -18,10 +18,9 @@ export default function ContributionCard({ storyId, contribution }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const handleLike = () => {
-    const user = auth.currentUser;
     startTransition(async () => {
       try {
-        const idToken = await user?.getIdToken();
+        const idToken = await auth.currentUser?.getIdToken();
         const next = await likeContribution({
           storyId,
           contributionId: contribution.id,
@@ -30,7 +29,7 @@ export default function ContributionCard({ storyId, contribution }: Props) {
         setLikes(next);
       } catch (err) {
         console.error(err);
-        setError("請先登入再點讚。");
+        setError("點讚失敗，稍後再試。");
       }
     });
   };
