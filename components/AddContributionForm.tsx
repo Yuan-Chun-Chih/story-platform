@@ -20,9 +20,15 @@ export default function AddContributionForm({
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
+    const user = auth.currentUser;
+    if (!user) {
+      setMessage("請先登入並輸入內容。");
+      return;
+    }
+
     startTransition(async () => {
       try {
-        const idToken = await auth.currentUser?.getIdToken();
+        const idToken = await user.getIdToken();
         await addContribution({
           storyId,
           content,
@@ -33,7 +39,7 @@ export default function AddContributionForm({
         setMessage("已送出你的貢獻！");
       } catch (err) {
         console.error(err);
-        setMessage("送出失敗，請檢查內容後再試。");
+        setMessage("請先登入並輸入內容。");
       }
     });
   };

@@ -15,6 +15,8 @@ import { auth, initAnalytics } from "../lib/firebase";
 export default function Navbar() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  // [新增] 用於防止重複點擊的狀態
+  const [isSigningIn, setIsSigningIn] = useState(false);
 
   useEffect(() => {
     initAnalytics();
@@ -26,12 +28,35 @@ export default function Navbar() {
   }, []);
 
   const handleSignIn = async () => {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    // 如果正在登入中，直接返回，防止重複觸發
+    if (isSigningIn) return;
+
+    setIsSigningIn(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (error: any) {
+      // 忽略 "popup-closed-by-user" 和 "cancelled-popup-request" 錯誤
+      if (
+        error.code === "auth/popup-closed-by-user" ||
+        error.code === "auth/cancelled-popup-request"
+      ) {
+        console.log("使用者取消了登入");
+      } else {
+        console.error("登入錯誤:", error);
+        alert("登入失敗，請稍後再試。");
+      }
+    } finally {
+      setIsSigningIn(false);
+    }
   };
 
   const handleSignOut = async () => {
-    await signOut(auth);
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("登出錯誤:", error);
+    }
   };
 
   return (
@@ -81,10 +106,10 @@ export default function Navbar() {
           )}
           <button
             onClick={user ? handleSignOut : handleSignIn}
-            disabled={loading}
-            className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:-translate-y-[1px] hover:border-indigo-200 hover:text-indigo-700"
+            disabled={loading || isSigningIn} // 登入中禁用按鈕
+            className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:-translate-y-[1px] hover:border-indigo-200 hover:text-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {user ? "登出" : loading ? "載入中..." : "Google 登入"}
+            {user ? "登出" : isSigningIn ? "登入中..." : loading ? "載入中..." : "Google 登入"}
           </button>
         </div>
       </div>

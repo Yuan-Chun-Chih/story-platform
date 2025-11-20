@@ -14,14 +14,20 @@ export default function NewStoryPage() {
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const user = auth.currentUser;
+
+    if (!user) {
+      setMessage("請先登入後再建立故事。");
+      return;
+    }
 
     startTransition(async () => {
       try {
-        const idToken = await auth.currentUser?.getIdToken();
+        const idToken = await user.getIdToken();
         const formData = new FormData();
         formData.append("title", title);
         formData.append("content", content);
-        if (idToken) formData.append("idToken", idToken);
+        formData.append("idToken", idToken);
 
         await createStory(formData);
         router.push("/");

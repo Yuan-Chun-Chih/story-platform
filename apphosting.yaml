@@ -1,4 +1,6 @@
+# App Hosting 設定檔
 env:
+  # --- 前端金鑰 (維持原樣，這些是對的) ---
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
     value: AIzaSyBqR2-t7zfW7GnxYZIMQa6uXzMzwfq3r0I
   - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
@@ -13,3 +15,16 @@ env:
     value: 1:509542766760:web:d76ad06a516cff55b80a9d
   - variable: NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
     value: G-1ZZV96D3TB
+
+  # --- 後端管理員金鑰 (請填入真實數值) ---
+  - variable: FIREBASE_PROJECT_ID
+    value: story-platform-f1dc7
+  
+  - variable: FIREBASE_CLIENT_EMAIL
+    value: firebase-adminsdk-fbsvc@story-platform-f1dc7.iam.gserviceaccount.com
+    
+  - variable: GOOGLE_GENAI_API_KEY
+    value: AIzaSyB4o-OFClmrvrL7L8HfS8XOmgTMhbnka8k # [請刪除這行文字，換成您 .env.local 裡的 GOOGLE_GENAI_API_KEY 值]
+
+  - variable: FIREBASE_PRIVATE_KEY
+    value: "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDvOGewltpgCKCF\nZT8t5pVROsMp43MidscoF66S6GfFODmi38GPLbPFuyTNBlNJ9liSRLNfj6aPgfkl\nx4rU14PTlLJ8FkUhZFw5dj7Giha0xFaefa+NMrDL5qRpivIe/ZQxpy/+Q9CpNFWS\nvRdMXUKifc0BGNOqGtLLZdtPfwxrMkStRIsHHZ9qr7fyq++9Dcphw9sfv7b+EP7n\nRnx8x4yDMzUkPeVc6zTNV7LowI5+w5QW5KGax9V+vjtbWybNrvwhhHqcDC8SsotH\nzo5vP+xsbfmbH2aVkqDo0MsXugGBKVqHFax6+fZmXusKEaQSUG2E4/hxAUL7xWPS\n9YklBJK/AgMBAAECggEAXjkr0kjg08GiJFioRXaUqq2IEJg3kcQSFq8ZQmEK+on2\nXbpffXtFW2UmjiDnLnM7GMW5lzK4Kr9JeMF7Y/FNScnAcZK+APSMRM/X0xCx99p7\nuaqMuoNUUsPST4X8bwt3UwVkqHRinDryV71mD1yOcf02AbAbMt2k2JuSgeHrbM7Z\nfqHfNUXd/EhYZfF0Zou3DprZM9n5ObQia3cZKn+S+/0dSRClQEy0Gz+PP8t/HYji\n4UERfdNZZJYpW7CBTo37oxjyvlyVmMzXLTGD49msDXh9PVaKcRadgeCKL+2LnoRN\n5HwFpYlFm22P11pC1tscTJgJf93Vwzykj++1M0AXfQKBgQD3/NAPS2amnmmBL3kk\nmhnWqNx8KxILsZJ6vy+kXnBYRWCgbrgQvp4wKwNLxh0Qh+XvivJUdjeWhtV5wBiw\nxzmPcxmvlR3GnZMuzuH0ljIP/vvQErvgV28CNKxNOVC2Osb3Tgby1xnvqoJOvCg0\nTvMXqD8w6hb9+FGi2QQ/BIuNowKBgQD28xNjwbvZPp4La8s4B0SGKGejW7orS2je\n2qy3zVQwe3KZP9mPIOHc2fL9hIFHPYqWF0APdVTappJuh+M13+hFE2i3i+OflsCu\nWqjihy+wnIw2fxLat4lAWwkD4u0jldepE9Gl8Z4YQDEDku4j8wH8ViMXDgKV42aB\nnS2wgOLANQKBgCVMV/rE63aKAvJUMpNHvjUkBq2CSN+LYK2njcHaFmmgXa0jmfmi\nweYawg8mh/6RggrqShJcCXZRZ1A9jTkhbc3ekPFwqx7RWm7C3QdNg9AWGMet2aYf\nYGnjhDrFMReHdZ+Ck9b4dUUvzxOKhz1+1l8rhf2UZ8rhC15D57iWtWqjAoGAQ78d\nk6FjYk7OVr3Eq2M7Bj7xZ5xTb2spovGErovSy9Yh8y7UBXL043ybL7d5K80TRuer\n+FGs7KsDwvTefTom40RW1vu2f2KBC5Ptfu+tQps/z/d+eageLByNVZacjcWeu1Cn\nlAm74FVD3QIi+JPC+LG8wKdkSDBxP5+aGDDTg/0CgYEA0Fa6L1/AgifHA7guvEuS\ncNcxSENDdgQ91++Y1/ril8s4zDli81uqy/fYhE8gGKl2h/EgP/IfDAmvaEI7shF3\nN0x34i6bS/rMcedqYPUSsmAG5n7ga5T4X5n3171zb1OUB8spJF32HZoXvUy634Hr\nORuEHmnYzj1CvRQN9iN3YTc=\n-----END PRIVATE KEY-----\n"

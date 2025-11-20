@@ -4,37 +4,20 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { FieldPath, FieldValue } from "firebase-admin/firestore";
-// 檢查 import 路徑是否正確 (../lib/...)
 import { adminAuth, adminDb } from "../lib/firebaseAdmin";
 import { RankedBranch } from "../lib/types";
 
-// 允許匿名：有 token 則驗證，沒有則回傳匿名用戶
-const resolveUser = async (idToken: string | undefined | null) => {
+const requireAuth = async (idToken: string | undefined | null) => {
   if (!idToken) {
-    return {
-      uid: "anonymous",
-      displayName: "匿名用戶",
-      email: "",
-      photoURL: "",
-    };
+    throw new Error("需要登入後才可操作。");
   }
-  try {
-    const decoded = await adminAuth.verifyIdToken(idToken);
-    return {
-      uid: decoded.uid,
-      displayName: decoded.name ?? "匿名用戶",
-      email: decoded.email ?? "",
-      photoURL: decoded.picture ?? "",
-    };
-  } catch (err) {
-    console.error("verifyIdToken failed, fallback to anonymous", err);
-    return {
-      uid: "anonymous",
-      displayName: "匿名用戶",
-      email: "",
-      photoURL: "",
-    };
-  }
+  const decoded = await adminAuth.verifyIdToken(idToken);
+  return {
+    uid: decoded.uid,
+    displayName: decoded.name ?? "匿名用戶",
+    email: decoded.email ?? "",
+    photoURL: decoded.picture ?? "",
+  };
 };
 
 // 備用封面圖
@@ -158,7 +141,7 @@ export async function createStory(formData: FormData) {
   const title = (formData.get("title") as string)?.trim();
   const content = (formData.get("content") as string)?.trim();
   const idToken = (formData.get("idToken") as string) ?? null;
-  const user = await resolveUser(idToken);
+  const user = await requireAuth(idToken);
 
   if (!title || !content) {
     throw new Error("標題與內容不可空白。");
@@ -200,7 +183,7 @@ export async function addContribution(payload: {
   idToken: string | null | undefined;
 }) {
   const { storyId, content, parentContributionId, idToken } = payload;
-  const ensured = await resolveUser(idToken);
+  const ensured = await requireAuth(idToken);
 
   if (!content.trim()) {
     throw new Error("內容不可空白。");
@@ -231,7 +214,7 @@ export async function likeContribution(params: {
   idToken: string | null | undefined;
 }) {
   const { storyId, contributionId, idToken } = params;
-  await resolveUser(idToken);
+  await requireAuth(idToken);
 
   const contributionRef = adminDb
     .collection("stories")

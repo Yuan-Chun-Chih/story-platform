@@ -20,7 +20,12 @@ export default function ContributionCard({ storyId, contribution }: Props) {
   const handleLike = () => {
     startTransition(async () => {
       try {
-        const idToken = await auth.currentUser?.getIdToken();
+        const user = auth.currentUser;
+        if (!user) {
+          setError("請先登入再點讚。");
+          return;
+        }
+        const idToken = await user.getIdToken();
         const next = await likeContribution({
           storyId,
           contributionId: contribution.id,
