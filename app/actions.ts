@@ -7,7 +7,28 @@ import { getStorage } from "firebase-admin/storage";
 import { adminAuth, adminDb } from "../lib/firebaseAdmin";
 import { RankedBranch, ContributionTags } from "../lib/types";
 
-// --- 輔助函式 (保持不變) ---
+// [新增] 引入 Vertex AI 與 Google Auth 相關套件
+import { VertexAI } from "@google-cloud/vertexai";
+import { GoogleAuth } from "google-auth-library";
+
+// --- 設定區 ---
+// 您的 Firebase 專案 ID (通常與 GCP 專案 ID 相同)
+const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+const LOCATION = "asia-east1"; // 或 'us-central1'
+
+// 初始化 Vertex AI (用於文字生成)
+const vertexAI = new VertexAI({
+  project: PROJECT_ID,
+  location: LOCATION,
+});
+
+// 初始化 Google Auth (用於圖片生成 REST API)
+const authClient = new GoogleAuth({
+  scopes: "https://www.googleapis.com/auth/cloud-platform",
+});
+
+// --- 輔助函式 ---
+
 const requireAuth = async (idToken: string | undefined | null) => {
   if (!idToken) throw new Error("需要登入後才可操作。");
   try {
@@ -47,33 +68,53 @@ const uploadImageToStorage = async (base64String: string, userId: string) => {
   }
 };
 
+// [修改] 改用 Vertex AI Imagen (REST API)
 const generateCoverImage = async (content: string) => {
-  const apiKey = process.env.GOOGLE_GENAI_API_KEY;
-  const prompt = `生成一張描述以下場景的數位藝術封面圖：\n${content.slice(0, 500)}`;
-  if (!apiKey) return fallbackCover(content);
+  if (!PROJECT_ID) return fallbackCover(content);
+
+  const prompt = `生成一張描述以下場景的數位藝術封面圖，風格為奇幻或科幻小說插畫：\n${content.slice(0, 500)}`;
+
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          instances: [{ prompt: prompt }],
-          parameters: { sampleCount: 1, aspectRatio: "16:9" },
-        }),
-      }
-    );
-    if (!response.ok) return fallbackCover(content);
+    // 1. 取得 Access Token (App Hosting 會自動處理身分驗證)
+    const client = await authClient.getClient();
+    const accessToken = await client.getAccessToken();
+
+    // 2. 呼叫 Vertex AI Imagen API
+    // 使用 imagegeneration@005 (Imagen 2)
+    const url = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/imagegeneration@005:predict`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken.token}`,
+      },
+      body: JSON.stringify({
+        instances: [{ prompt: prompt }],
+        parameters: {
+          sampleCount: 1,
+          aspectRatio: "16:9",
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("Vertex Imagen error:", await response.text());
+      return fallbackCover(content);
+    }
+
     const result = await response.json();
     const base64Data = result?.predictions?.[0]?.bytesBase64Encoded;
+
     return base64Data ? `data:image/png;base64,${base64Data}` : fallbackCover(content);
   } catch (error) {
+    console.error("generateCoverImage error:", error);
     return fallbackCover(content);
   }
 };
 
+// [修改] 改用 Vertex AI SDK (Gemini)
 const rankBranchesWithGemini = async (leadContent: string, branches: { id: string; content: string }[]) => {
-  const apiKey = process.env.GOOGLE_GENAI_API_KEY;
   const prompt = `你是一位文學評論家。根據前導劇情，對分支進行排名 (1.創意 2.寫作 3.相關性)。回傳 JSON 陣列：[{ "rank": number, "id": string, "justification": string }]\n\n前導：${leadContent}\n分支：\n${branches.map((b) => `- (${b.id}) ${b.content}`).join("\n")}`;
   
   const defaultRanking = branches.map((b, index) => ({
@@ -82,31 +123,79 @@ const rankBranchesWithGemini = async (leadContent: string, branches: { id: strin
     justification: "預設排序 (AI 未啟用或失敗)。",
   }));
 
-  if (!apiKey) return defaultRanking;
-
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7, responseMimeType: "application/json" },
-        }),
-      }
-    );
-    if (!response.ok) throw new Error(await response.text());
-    const data = await response.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const generativeModel = vertexAI.getGenerativeModel({
+      model: "gemini-1.5-flash-001", // 使用 Vertex AI 上的 Gemini Flash
+      generationConfig: {
+        temperature: 0.7,
+        responseMimeType: "application/json",
+      },
+    });
+
+    const result = await generativeModel.generateContent(prompt);
+    const text = result.response.candidates?.[0].content.parts[0].text;
+
     if (text) return JSON.parse(text) as RankedBranch[];
   } catch (error) {
-    console.error("Gemini error:", error);
+    console.error("Vertex Gemini error:", error);
   }
   return defaultRanking;
 };
 
-// --- Server Actions ---
+// [修改] 改用 Vertex AI SDK (Gemini)
+export async function generateInspiration(storyId: string, parentContributionId: string | null) {
+  // 1. 取得上下文
+  let contextText = "這是一個新故事的開頭。";
+  
+  if (parentContributionId) {
+    const parentSnap = await adminDb
+      .collection("stories")
+      .doc(storyId)
+      .collection("contributions")
+      .doc(parentContributionId)
+      .get();
+      
+    if (parentSnap.exists) {
+      contextText = parentSnap.data()?.content || contextText;
+    }
+  } else {
+    const storySnap = await adminDb.collection("stories").doc(storyId).get();
+    if (storySnap.exists) {
+      contextText = storySnap.data()?.synopsis || contextText;
+    }
+  }
+
+  // 2. 呼叫 Vertex AI
+  const prompt = `根據以下劇情上下文，生成 3 個簡短、具體的「劇情發展靈感」。
+請直接回傳一個 JSON 字串陣列，例如：["突然傳來一陣急促的敲門聲。", "他發現口袋裡多了一張陌生的紙條。", "窗外的雨停了，空氣中瀰漫著硫磺味。"]
+
+上下文：
+${contextText.slice(0, 500)}`;
+
+  try {
+    const generativeModel = vertexAI.getGenerativeModel({
+      model: "gemini-1.5-flash-001",
+      generationConfig: {
+        temperature: 0.9,
+        responseMimeType: "application/json",
+      },
+    });
+
+    const result = await generativeModel.generateContent(prompt);
+    const text = result.response.candidates?.[0].content.parts[0].text;
+    
+    if (text) {
+      return JSON.parse(text) as string[];
+    }
+  } catch (error) {
+    console.error("Vertex Inspiration error:", error);
+    throw new Error("靈感生成失敗");
+  }
+  
+  return ["靈感枯竭中...", "試著描述一下天氣？", "讓主角發現一個秘密。"];
+}
+
+// --- Server Actions (邏輯保持不變) ---
 
 export async function createStory(formData: FormData) {
   const title = (formData.get("title") as string)?.trim();
@@ -133,7 +222,7 @@ export async function createStory(formData: FormData) {
     createdAt: FieldValue.serverTimestamp(),
     parentContributionId: null,
     likesCount: 0,
-    isCanonical: true, // 第一章永遠是主線
+    isCanonical: true,
     tags: {},
   });
 
@@ -153,13 +242,12 @@ export async function createStory(formData: FormData) {
   redirect(`/story/${storyRef.id}`);
 }
 
-// [修改] 支援標籤輸入
 export async function addContribution(payload: {
   storyId: string;
   content: string;
   parentContributionId: string | null;
   idToken: string | null | undefined;
-  tags?: ContributionTags; // 新增 tags 參數
+  tags?: ContributionTags;
 }) {
   const { storyId, content, parentContributionId, idToken, tags } = payload;
   const user = await requireAuth(idToken);
@@ -175,15 +263,14 @@ export async function addContribution(payload: {
     createdAt: FieldValue.serverTimestamp(),
     parentContributionId: parentContributionId ?? null,
     likesCount: 0,
-    isCanonical: false, // 預設非主線，需競爭上位
-    tags: tags ?? {},   // 儲存標籤
+    isCanonical: false,
+    tags: tags ?? {},
   });
 
   revalidatePath(`/story/${storyId}`);
   return { id: newDoc.id };
 }
 
-// [修改] 加入主線競爭邏輯 (Canonical Promotion)
 export async function likeContribution(params: {
   storyId: string;
   contributionId: string;
@@ -195,7 +282,6 @@ export async function likeContribution(params: {
   const storyRef = adminDb.collection("stories").doc(storyId);
   const targetRef = storyRef.collection("contributions").doc(contributionId);
 
-  // 使用 Transaction 處理競態條件與主線判定
   const result = await adminDb.runTransaction(async (t) => {
     const targetSnap = await t.get(targetRef);
     if (!targetSnap.exists) throw new Error("找不到該貢獻。");
@@ -205,16 +291,11 @@ export async function likeContribution(params: {
     const newLikes = currentLikes + 1;
     const parentId = targetData.parentContributionId;
 
-    // 更新當前節點按讚數
     t.update(targetRef, { likesCount: newLikes });
 
-    // --- 主線晉升判斷邏輯 ---
-    // 條件 1: 必須有父節點 (Root 預設就是主線，不需競爭)
-    // 條件 2: 按讚數達到門檻 (例如 5)
     const PROMOTION_THRESHOLD = 5;
     
     if (parentId && newLikes >= PROMOTION_THRESHOLD) {
-      // 找出所有同層兄弟節點 (Same parent)
       const siblingsSnap = await t.get(
         storyRef.collection("contributions").where("parentContributionId", "==", parentId)
       );
@@ -227,19 +308,13 @@ export async function likeContribution(params: {
         if (data.likesCount > maxLikes) maxLikes = data.likesCount;
         if (data.isCanonical) currentCanonicalId = doc.id;
       });
-
-      // 如果當前節點是新的最高票 (嚴格大於，避免平手切換)，則晉升
-      // 注意：這裡的 maxLikes 是包含自己的舊值，所以要比較 newLikes 是否大於其他人的 max
-      // 簡單起見：如果 newLikes > 目前已知的最高票 (不含自己更新後)，或它是唯一最高
       
-      const isNewChampion = newLikes > maxLikes; // 簡單判定：只要比 transaction 讀取到的舊 max 還大 (若自己原本就是 max，則沒變；若別人是 max，則超越)
+      const isNewChampion = newLikes > maxLikes;
 
       if (isNewChampion && targetSnap.id !== currentCanonicalId) {
-        // 1. 取消舊主線
         if (currentCanonicalId) {
           t.update(storyRef.collection("contributions").doc(currentCanonicalId), { isCanonical: false });
         }
-        // 2. 設定新主線
         t.update(targetRef, { isCanonical: true });
       }
     }
