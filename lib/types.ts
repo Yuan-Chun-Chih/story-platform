@@ -1,3 +1,4 @@
+// lib/types.ts
 export type Story = {
   id: string;
   title: string;
@@ -10,6 +11,12 @@ export type Story = {
   synopsis?: string;
 };
 
+export type ContributionTags = {
+  characters: string[]; // 登場角色
+  timeline?: string;    // 時間點
+  location?: string;    // 地點
+};
+
 export type Contribution = {
   id: string;
   content: string;
@@ -18,7 +25,8 @@ export type Contribution = {
   createdAt: string;
   parentContributionId: string | null;
   likesCount: number;
-  isCanonical: boolean;
+  isCanonical: boolean; // 是否為主線
+  tags?: ContributionTags; // [新增] 標籤資料
 };
 
 export type RankedBranch = {

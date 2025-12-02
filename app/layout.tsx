@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Navbar from "../components/Navbar";
+import AnimatedBackground from "../components/AnimatedBackground"; // [新增]
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,10 +28,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-slate-50 text-slate-900 antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} min-h-screen text-slate-900 antialiased`}
       >
+        <AnimatedBackground /> {/* [新增] 放在最底層 */}
+        
         <Navbar />
-        <main className="pb-12">{children}</main>
+        <main className="pb-12 relative">{children}</main> {/* relative 確保內容浮在背景上 */}
       </body>
     </html>
   );

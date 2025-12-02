@@ -15,7 +15,6 @@ import { auth, initAnalytics } from "../lib/firebase";
 export default function Navbar() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  // [新增] 用於防止重複點擊的狀態
   const [isSigningIn, setIsSigningIn] = useState(false);
 
   useEffect(() => {
@@ -28,21 +27,16 @@ export default function Navbar() {
   }, []);
 
   const handleSignIn = async () => {
-    // 如果正在登入中，直接返回，防止重複觸發
     if (isSigningIn) return;
-
     setIsSigningIn(true);
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
     } catch (error: any) {
-      // 忽略 "popup-closed-by-user" 和 "cancelled-popup-request" 錯誤
       if (
-        error.code === "auth/popup-closed-by-user" ||
-        error.code === "auth/cancelled-popup-request"
+        error.code !== "auth/popup-closed-by-user" &&
+        error.code !== "auth/cancelled-popup-request"
       ) {
-        console.log("使用者取消了登入");
-      } else {
         console.error("登入錯誤:", error);
         alert("登入失敗，請稍後再試。");
       }
@@ -51,66 +45,62 @@ export default function Navbar() {
     }
   };
 
-  const handleSignOut = async () => {
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error("登出錯誤:", error);
-    }
-  };
-
   return (
-    <nav className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg shadow-indigo-200">
-              ✨
-            </div>
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold text-slate-900">
-                Story Forge
-              </span>
-              <span className="text-xs text-slate-500">
-                線上共創故事平台
-              </span>
-            </div>
-          </Link>
-        </div>
-        <div className="flex items-center gap-3">
+    <nav className="sticky top-0 z-50 border-b border-white/40 bg-white/60 backdrop-blur-xl transition-all duration-300">
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        <Link href="/" className="group flex items-center gap-3">
+          <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30 transition-transform group-hover:scale-105">
+            <span className="text-xl">✨</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-lg font-bold text-transparent">
+              Story Forge
+            </span>
+            <span className="text-[10px] font-medium tracking-wider text-slate-500 uppercase">
+              Co-Create Worlds
+            </span>
+          </div>
+        </Link>
+
+        <div className="flex items-center gap-4">
           <Link
             href="/story/new"
-            className="hidden rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-indigo-200 transition hover:-translate-y-[1px] hover:bg-indigo-700 sm:inline-flex"
+            className="hidden rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-slate-900/20 transition-all hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-slate-900/30 sm:inline-flex"
           >
-            建立新故事
+            + 建立故事
           </Link>
-          {user && (
-            <div className="flex items-center gap-2 rounded-full bg-slate-100 px-2 py-1">
+          
+          {user ? (
+            <div className="flex items-center gap-3 pl-2 border-l border-slate-200">
               {user.photoURL ? (
                 <Image
                   src={user.photoURL}
                   alt={user.displayName ?? "user"}
-                  width={28}
-                  height={28}
-                  className="h-7 w-7 rounded-full object-cover"
+                  width={32}
+                  height={32}
+                  className="h-8 w-8 rounded-full ring-2 ring-white shadow-sm"
                 />
               ) : (
-                <div className="h-7 w-7 rounded-full bg-indigo-500 text-center text-sm font-semibold text-white">
-                  {user.email?.[0]?.toUpperCase() ?? "U"}
+                <div className="h-8 w-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-sm font-bold">
+                  {user.email?.[0]?.toUpperCase()}
                 </div>
               )}
-              <span className="text-sm font-medium text-slate-700">
-                {user.displayName ?? "使用者"}
-              </span>
+              <button
+                onClick={() => signOut(auth)}
+                className="text-sm font-medium text-slate-600 hover:text-slate-900"
+              >
+                登出
+              </button>
             </div>
+          ) : (
+            <button
+              onClick={handleSignIn}
+              disabled={loading || isSigningIn}
+              className="rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:border-indigo-200 hover:text-indigo-600 hover:shadow-md"
+            >
+              {isSigningIn ? "登入中..." : "Google 登入"}
+            </button>
           )}
-          <button
-            onClick={user ? handleSignOut : handleSignIn}
-            disabled={loading || isSigningIn} // 登入中禁用按鈕
-            className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:-translate-y-[1px] hover:border-indigo-200 hover:text-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {user ? "登出" : isSigningIn ? "登入中..." : loading ? "載入中..." : "Google 登入"}
-          </button>
         </div>
       </div>
     </nav>
