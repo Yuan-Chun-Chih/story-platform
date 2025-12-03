@@ -7,24 +7,17 @@ import { getStorage } from "firebase-admin/storage";
 import { adminAuth, adminDb } from "../lib/firebaseAdmin";
 import { RankedBranch, ContributionTags } from "../lib/types";
 
-// [新增] 引入 Vertex AI 與 Google Auth 相關套件
+// 引入 Vertex AI (僅用於文字生成與優化 Prompt)
 import { VertexAI } from "@google-cloud/vertexai";
-import { GoogleAuth } from "google-auth-library";
 
 // --- 設定區 ---
-// 您的 Firebase 專案 ID (通常與 GCP 專案 ID 相同)
 const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-const LOCATION = "asia-east1"; // 或 'us-central1'
+const LOCATION = "us-central1"; // 文字模型建議使用 us-central1
 
-// 初始化 Vertex AI (用於文字生成)
+// 初始化 Vertex AI
 const vertexAI = new VertexAI({
   project: PROJECT_ID,
   location: LOCATION,
-});
-
-// 初始化 Google Auth (用於圖片生成 REST API)
-const authClient = new GoogleAuth({
-  scopes: "https://www.googleapis.com/auth/cloud-platform",
 });
 
 // --- 輔助函式 ---
@@ -54,13 +47,22 @@ const uploadImageToStorage = async (base64String: string, userId: string) => {
   try {
     const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
     if (!bucketName) return null;
-    const base64Data = base64String.replace(/^data:image\/\w+;base64,/, "");
+    
+    // 支援 png 與 jpeg
+    const matches = base64String.match(/^data:image\/(\w+);base64,(.+)$/);
+    if (!matches) return null;
+    
+    const extension = matches[1]; // png 或 jpeg
+    const base64Data = matches[2];
     const buffer = Buffer.from(base64Data, "base64");
+    
     const bucket = getStorage().bucket(bucketName);
-    const fileName = `covers/${userId}/${Date.now()}.png`;
+    const fileName = `covers/${userId}/${Date.now()}.${extension}`;
     const file = bucket.file(fileName);
-    await file.save(buffer, { metadata: { contentType: "image/png" } });
+    
+    await file.save(buffer, { metadata: { contentType: `image/${extension}` } });
     await file.makePublic();
+    
     return file.publicUrl();
   } catch (error) {
     console.error("Image upload failed:", error);
@@ -68,52 +70,47 @@ const uploadImageToStorage = async (base64String: string, userId: string) => {
   }
 };
 
-// [修改] 改用 Vertex AI Imagen (REST API)
+// [修改] 改用 Pollinations.ai 生成圖片 (穩定、免費、無權限問題)
 const generateCoverImage = async (content: string) => {
-  if (!PROJECT_ID) return fallbackCover(content);
+  // 1. 先用 Vertex AI (Gemini) 產生一個優質的英文 Prompt
+  // 因為 Pollinations 對英文 Prompt 的理解力最好
+  let imagePrompt = content.slice(0, 100);
+  try {
+    const model = vertexAI.getGenerativeModel({ model: "gemini-1.5-flash-001" });
+    const result = await model.generateContent(`Generate a short, vivid, descriptive English image prompt (under 30 words) for a fantasy story cover based on this content: "${content.slice(0, 300)}". Only return the prompt text.`);
+    const text = result.response.candidates?.[0].content.parts[0].text;
+    if (text) imagePrompt = text.trim();
+  } catch (e) {
+    console.warn("Prompt optimization failed, using raw text.", e);
+  }
 
-  const prompt = `生成一張描述以下場景的數位藝術封面圖，風格為奇幻或科幻小說插畫：\n${content.slice(0, 500)}`;
+  // 2. 呼叫 Pollinations API
+  // 參數說明: width/height=1280x720 (16:9), nologo=true (隱藏浮水印), seed (隨機亂數確保每次不同)
+  const encodedPrompt = encodeURIComponent(`${imagePrompt} cinematic lighting, highly detailed, 8k, fantasy art style`);
+  const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1280&height=720&nologo=true&seed=${Math.floor(Math.random() * 10000)}`;
 
   try {
-    // 1. 取得 Access Token (App Hosting 會自動處理身分驗證)
-    const client = await authClient.getClient();
-    const accessToken = await client.getAccessToken();
-
-    // 2. 呼叫 Vertex AI Imagen API
-    // 使用 imagegeneration@005 (Imagen 2)
-    const url = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/imagegeneration@005:predict`;
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken.token}`,
-      },
-      body: JSON.stringify({
-        instances: [{ prompt: prompt }],
-        parameters: {
-          sampleCount: 1,
-          aspectRatio: "16:9",
-        },
-      }),
+    const response = await fetch(url, { 
+      method: 'GET',
+      // 設定 15 秒 timeout，避免卡住
+      signal: AbortSignal.timeout(15000) 
     });
 
-    if (!response.ok) {
-      console.error("Vertex Imagen error:", await response.text());
-      return fallbackCover(content);
-    }
+    if (!response.ok) throw new Error(`Pollinations API Error: ${response.statusText}`);
 
-    const result = await response.json();
-    const base64Data = result?.predictions?.[0]?.bytesBase64Encoded;
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const base64 = buffer.toString("base64");
 
-    return base64Data ? `data:image/png;base64,${base64Data}` : fallbackCover(content);
+    // 回傳 JPEG 格式的 Base64
+    return `data:image/jpeg;base64,${base64}`;
   } catch (error) {
     console.error("generateCoverImage error:", error);
     return fallbackCover(content);
   }
 };
 
-// [修改] 改用 Vertex AI SDK (Gemini)
+// [保持原樣] Vertex AI SDK (Gemini)
 const rankBranchesWithGemini = async (leadContent: string, branches: { id: string; content: string }[]) => {
   const prompt = `你是一位文學評論家。根據前導劇情，對分支進行排名 (1.創意 2.寫作 3.相關性)。回傳 JSON 陣列：[{ "rank": number, "id": string, "justification": string }]\n\n前導：${leadContent}\n分支：\n${branches.map((b) => `- (${b.id}) ${b.content}`).join("\n")}`;
   
@@ -125,7 +122,7 @@ const rankBranchesWithGemini = async (leadContent: string, branches: { id: strin
 
   try {
     const generativeModel = vertexAI.getGenerativeModel({
-      model: "gemini-1.5-flash-001", // 使用 Vertex AI 上的 Gemini Flash
+      model: "gemini-1.5-flash-001", 
       generationConfig: {
         temperature: 0.7,
         responseMimeType: "application/json",
@@ -142,9 +139,8 @@ const rankBranchesWithGemini = async (leadContent: string, branches: { id: strin
   return defaultRanking;
 };
 
-// [修改] 改用 Vertex AI SDK (Gemini)
+// [保持原樣] Vertex AI SDK (Gemini)
 export async function generateInspiration(storyId: string, parentContributionId: string | null) {
-  // 1. 取得上下文
   let contextText = "這是一個新故事的開頭。";
   
   if (parentContributionId) {
@@ -165,7 +161,6 @@ export async function generateInspiration(storyId: string, parentContributionId:
     }
   }
 
-  // 2. 呼叫 Vertex AI
   const prompt = `根據以下劇情上下文，生成 3 個簡短、具體的「劇情發展靈感」。
 請直接回傳一個 JSON 字串陣列，例如：["突然傳來一陣急促的敲門聲。", "他發現口袋裡多了一張陌生的紙條。", "窗外的雨停了，空氣中瀰漫著硫磺味。"]
 
@@ -205,9 +200,13 @@ export async function createStory(formData: FormData) {
 
   if (!title || !content) throw new Error("標題與內容不可空白。");
 
+  // 1. 這裡現在會呼叫 Pollinations
   let coverImageUrl = await generateCoverImage(content);
+  
+  // 2. 將 Pollinations 產生的 Base64 上傳到您的 Firebase Storage
   if (coverImageUrl.startsWith("data:image")) {
     const uploadedUrl = await uploadImageToStorage(coverImageUrl, user.uid);
+    // 如果上傳成功就用 Storage URL，失敗就用 Placeholder，避免 Base64 直存 Firestore
     coverImageUrl = uploadedUrl || fallbackCover(content);
   }
 
